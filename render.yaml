@@ -1,0 +1,29 @@
+services:
+  - type: worker
+    name: music-mod-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars: []
+```
+
+---
+
+## 🚀 Как залить на Render — пошагово
+
+**1.** Создай папку `musicbot/` на компьютере, положи туда все 3 файла
+
+**2.** Создай репозиторий на [github.com](https://github.com) → загрузи туда папку
+
+**3.** На [render.com](https://render.com) → **New → Background Worker**
+
+**4.** Подключи GitHub репозиторий
+
+**5.** Render сам увидит `render.yaml` и подтянет настройки. Нажми **Deploy**
+
+Всё — бот запустится и будет работать. Структура папки:
+```
+musicbot/
+├── bot.py
+├── requirements.txt
+└── render.yaml
