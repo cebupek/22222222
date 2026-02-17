@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import aiohttp
-from telegram import Update, Bot
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application
 
 BOT_TOKEN = "8566474882:AAHfufmlEeW0XmkX_y4IDL6Tcwj52D6Eaa8"
@@ -17,12 +17,6 @@ API_COVERS = SITE_URL + "api/bot/pending/covers"
 API_DEL_SONG  = SITE_URL + "api/bot/delete/song"
 API_DEL_NAME  = SITE_URL + "api/bot/delete/name"
 API_DEL_COVER = SITE_URL + "api/bot/delete/cover"
-
-RULES_TEXT = (
-    "\n\n<b>Pravila moderacii:</b>\n"
-    "Prinimaem: originalnyj trek, pravilnoe nazvanie, dlina 1-10 min\n"
-    "Otklonaem: golosovye, stremy, politika, provokacii, nepriemlemyj kontent"
-)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,13 +75,15 @@ async def process_songs(bot, session):
         msg = (
             "<b>Novaya pesnya na moderacii</b>\n"
             "ID: <code>" + str(item_id) + "</code>\n"
-            "Ispolnitel: " + artist + "\n"
-            "Nazvanie: " + title + "\n\n"
-            "Udalit: /delete_song " + str(item_id) +
-            RULES_TEXT
+            "Ispolnitel: " + str(artist) + "\n"
+            "Nazvanie: " + str(title) + "\n\n"
+            "Udalit: /delete_song " + str(item_id) + "\n\n"
+            "<b>Pravila:</b>\n"
+            "Prinimaem: studijnaya zapis, 1-10 min\n"
+            "Otklonaem: golosovye, stremy, politika, provokacii"
         )
         await notify_mods(bot, msg)
-        logger.info("New song: id=%s title=%s", item_id, title)
+        logger.info("New song: id=%s", item_id)
 
 
 async def process_names(bot, session):
@@ -99,13 +95,13 @@ async def process_names(bot, session):
         seen_names.add(item_id)
         name = item.get("name", "-")
         msg = (
-            "<b>Novoe nazvanie plejlista na moderacii</b>\n"
+            "<b>Novoe nazvanie plejlista</b>\n"
             "ID: <code>" + str(item_id) + "</code>\n"
-            "Nazvanie: " + name + "\n\n"
+            "Nazvanie: " + str(name) + "\n\n"
             "Udalit: /delete_name " + str(item_id)
         )
         await notify_mods(bot, msg)
-        logger.info("New name: id=%s name=%s", item_id, name)
+        logger.info("New name: id=%s", item_id)
 
 
 async def process_covers(bot, session):
@@ -117,18 +113,16 @@ async def process_covers(bot, session):
         seen_covers.add(item_id)
         title = item.get("title", "-")
         img_url = item.get("cover_url") or item.get("image_url") or ""
-        cover_line = ""
-        if img_url:
-            cover_line = "\nOblozhka: " + img_url
+        cover_line = "\nOblozhka: " + img_url if img_url else ""
         msg = (
-            "<b>Novaya oblozhka na moderacii</b>\n"
+            "<b>Novaya oblozhka</b>\n"
             "ID: <code>" + str(item_id) + "</code>\n"
-            "Plejlist: " + title +
+            "Plejlist: " + str(title) +
             cover_line + "\n\n"
             "Udalit: /delete_cover " + str(item_id)
         )
         await notify_mods(bot, msg)
-        logger.info("New cover: id=%s title=%s", item_id, title)
+        logger.info("New cover: id=%s", item_id)
 
 
 async def self_ping_loop():
@@ -160,12 +154,11 @@ async def queue_check_loop(bot):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "<b>Music Moderation Bot</b>\n\n"
-        "Komandy:\n"
         "/ping - proverit bota\n"
         "/rules - pravila moderacii\n"
-        "/delete_song id\n"
-        "/delete_name id\n"
-        "/delete_cover id",
+        "/delete_song id - udalit pesnyu\n"
+        "/delete_name id - udalit nazvanie\n"
+        "/delete_cover id - udalit oblozhku",
         parse_mode="HTML",
     )
 
@@ -176,7 +169,7 @@ async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
+    await update.message.reply_text(
         "<b>Pravila moderacii trekov</b>\n\n"
         "Prinimaem:\n"
         "- Originalnyj trek (studijnaya zapis)\n"
@@ -186,9 +179,9 @@ async def cmd_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Golosovye, vyreski iz strimov\n"
         "- Treki dlinnee 15 minut\n"
         "- Politika (Rossiya/Ukraina)\n"
-        "- Provokacii i nepriemlemyj kontent"
+        "- Provokacii i nepriemlemyj kontent",
+        parse_mode="HTML",
     )
-    await update.message.reply_text(text, parse_mode="HTML")
 
 
 def is_mod(user_id):
@@ -246,27 +239,29 @@ async def cmd_delete_cover(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Oshibka udaleniya " + item_id)
 
 
-async def main():
+async def post_init(application: Application):
+    asyncio.create_task(queue_check_loop(application.bot))
+    asyncio.create_task(self_ping_loop())
+    logger.info("Background tasks started.")
+
+
+def main():
     logger.info("Starting bot...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("ping", cmd_ping))
     app.add_handler(CommandHandler("rules", cmd_rules))
     app.add_handler(CommandHandler("delete_song", cmd_delete_song))
     app.add_handler(CommandHandler("delete_name", cmd_delete_name))
     app.add_handler(CommandHandler("delete_cover", cmd_delete_cover))
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
-    logger.info("Bot polling. Starting background tasks...")
-    await asyncio.gather(
-        queue_check_loop(app.bot),
-        self_ping_loop(),
-    )
+    logger.info("Bot polling started.")
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot stopped.")
+    main()
